@@ -128,7 +128,7 @@ void parse_elf32_phdr(int fd, Elf32_Ehdr *elf_header)
         printf("Couldn't read file, errno %d\n", errno);
         exit(-1);
     }
-    int ffd = open("./file", O_WRONLY);
+    //int ffd = open("./file", O_WRONLY);
     puts("Program Headers:");
 
     printf("  p_type%12sp_offset    p_vaddr     p_paddr     p_filesz    p_memsz     p_flags     p_align\n", "");
