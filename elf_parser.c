@@ -8,6 +8,12 @@
 #include <stdbool.h>
 #include <assert.h>
 
+void error_exit(const char *msg)
+{
+    perror(msg);
+    exit(EXIT_FAILURE);
+}
+
 bool elf_check_file(Elf32_Ehdr *elf_header)
 {
     if (((char *)elf_header)[0] != 0x7f)
@@ -185,17 +191,27 @@ const char *get_section_type_name(uint32_t type)
     }
 }
 
-void get_section_flags(unsigned int flags, char *buffer, size_t size) {
-    buffer[0] = '\0';
+void get_section_flags(unsigned int flags, char *buffer, size_t size)
+{
+    int pos = 0;
 
-    if (flags & SHF_WRITE)            strncat(buffer, "W", size - strlen(buffer) - 1);
-    if (flags & SHF_ALLOC)            strncat(buffer, "A", size - strlen(buffer) - 1);
-    if (flags & SHF_EXECINSTR)        strncat(buffer, "X", size - strlen(buffer) - 1);
-    if (flags & SHF_MERGE)            strncat(buffer, "M", size - strlen(buffer) - 1);
-    if (flags & SHF_STRINGS)          strncat(buffer, "S", size - strlen(buffer) - 1);
-    if (flags & SHF_INFO_LINK)        strncat(buffer, "I", size - strlen(buffer) - 1);
-    if (flags & SHF_LINK_ORDER)       strncat(buffer, "L", size - strlen(buffer) - 1);
-    if (flags & SHF_OS_NONCONFORMING) strncat(buffer, "O", size - strlen(buffer) - 1);
+    if (flags & SHF_WRITE)
+        buffer[pos++] = 'W';
+    if (flags & SHF_ALLOC)
+        buffer[pos++] = 'A';
+    if (flags & SHF_EXECINSTR)
+        buffer[pos++] = 'X';
+    if (flags & SHF_MERGE)
+        buffer[pos++] = 'M';
+    if (flags & SHF_STRINGS)
+        buffer[pos++] = 'S';
+    if (flags & SHF_INFO_LINK)
+        buffer[pos++] = 'I';
+    if (flags & SHF_LINK_ORDER)
+        buffer[pos++] = 'L';
+    if (flags & SHF_OS_NONCONFORMING)
+        buffer[pos++] = 'O';
+    buffer[pos] = '\0';
 }
 
 void parse_elf32_shdr(int fd, Elf32_Ehdr *elf_header)
@@ -208,54 +224,51 @@ void parse_elf32_shdr(int fd, Elf32_Ehdr *elf_header)
     off_t offset = lseek(fd, shder_offset, SEEK_SET);
     if (offset == -1)
     {
-        printf("Couldn't lseek file, errno %d\n", errno);
-        exit(-1);
+        error_exit("Couldn't lseek file, errno");
     }
     ssize_t rd = read(fd, (void *)elf_section_header_table, shder_size);
     if (rd < 0)
     {
-        printf("Couldn't read file, errno %d\n", errno);
-        exit(-1);
+        error_exit("Couldn't read file");
     }
     assert(rd == (ssize_t)shder_size);
-    Elf32_Shdr elf_shder;
     uint32_t shstrtab_index = elf_header->e_shstrndx;
-    memcpy((char *)&elf_shder, elf_section_header_table + (shstrtab_index * shder_entry_size), shder_entry_size);
-    uint32_t shstrtab_offset = elf_shder.sh_offset;
-    uint32_t shstrtab_size = elf_shder.sh_size;
+    Elf32_Shdr *elf_shder = (Elf32_Shdr *)(elf_section_header_table + (shstrtab_index * shder_entry_size));
+    // memcpy((char *)&elf_shder, elf_section_header_table + (shstrtab_index * shder_entry_size), shder_entry_size);
+    uint32_t shstrtab_offset = elf_shder->sh_offset;
+    uint32_t shstrtab_size = elf_shder->sh_size;
     char *elf_shstrtab_table = (char *)malloc(shstrtab_size);
     offset = lseek(fd, shstrtab_offset, SEEK_SET);
     if (offset == -1)
     {
-        printf("Couldn't lseek file, errno %d\n", errno);
-        exit(-1);
+        error_exit("Couldn't lseek file");
     }
     rd = read(fd, (void *)elf_shstrtab_table, (size_t)shstrtab_size);
     if (rd < 0)
     {
-        printf("Couldn't read file, errno %d\n", errno);
-        exit(-1);
+        error_exit("Couldn't read file");
     }
     assert(rd == shstrtab_size);
     puts("Section Headers:");
     printf("  [Nr]   %-20s   %-40s %6s  %6s    %6s %6s    %s   %2s  %6s  %4s\n",
-        "Name", "Type", "Addr", "Off", "Size", "ES", "Flg", "Lk", "Inf", "Al");
-        for (uint32_t i = 0; i < shder_nums_entry; ++i)
+           "Name", "Type", "Addr", "Off", "Size", "ES", "Flg", "Lk", "Inf", "Al");
+    for (uint32_t i = 0; i < shder_nums_entry; ++i)
     {
-        memcpy((char *)&elf_shder, elf_section_header_table + (i * shder_entry_size), shder_entry_size);
+        elf_shder = (Elf32_Shdr *)(elf_section_header_table + (i * shder_entry_size));
+        // memcpy((char *)elf_shder, elf_section_header_table + (i * shder_entry_size), shder_entry_size);
         char flag_str[9];
-        get_section_flags(elf_shder.sh_flags, flag_str, sizeof(flag_str));
+        get_section_flags(elf_shder->sh_flags, flag_str, sizeof(flag_str));
         printf("  [%2d] ", i);
-        printf("  %-20s ", (char *)(elf_shstrtab_table + elf_shder.sh_name));
-        printf("  %-40s ", get_section_type_name(elf_shder.sh_type));
-        printf("  0x%.4x ", elf_shder.sh_addr);
-        printf("  0x%.4x ", elf_shder.sh_offset);
-        printf("  0x%.4x ", elf_shder.sh_size);
-        printf("  0x%.2x ", elf_shder.sh_entsize);
+        printf("  %-20s ", (char *)(elf_shstrtab_table + elf_shder->sh_name));
+        printf("  %-40s ", get_section_type_name(elf_shder->sh_type));
+        printf("  0x%.4x ", elf_shder->sh_addr);
+        printf("  0x%.4x ", elf_shder->sh_offset);
+        printf("  0x%.4x ", elf_shder->sh_size);
+        printf("  0x%.2x ", elf_shder->sh_entsize);
         printf("  %-2s ", flag_str);
-        printf("  0x%.2x ", elf_shder.sh_link);
-        printf("  0x%.2x ", elf_shder.sh_info);
-        printf("  0x%.2x \n", elf_shder.sh_addralign);
+        printf("  0x%.2x ", elf_shder->sh_link);
+        printf("  0x%.2x ", elf_shder->sh_info);
+        printf("  0x%.2x \n", elf_shder->sh_addralign);
     }
     free(elf_section_header_table);
     free(elf_shstrtab_table);
@@ -271,14 +284,12 @@ void parse_elf32_phdr(int fd, Elf32_Ehdr *elf_header)
     off_t offset = lseek(fd, phder_offset, SEEK_SET);
     if (offset == -1)
     {
-        printf("Couldn't lseek file, errno %d\n", errno);
-        exit(-1);
+        error_exit("Couldn't lseek file");
     }
     ssize_t rd = read(fd, (void *)elf_prog_header_table, (size_t)phder_size);
     if (rd < 0)
     {
-        printf("Couldn't read file, errno %d\n", errno);
-        exit(-1);
+        error_exit("Couldn't read file");
     }
     assert(rd == phder_size);
     puts("Program Headers:");
@@ -305,30 +316,27 @@ int main(int argc, char **argv)
 {
     if (argc < 2)
     {
-        puts("must provide a file");
-        exit(-1);
+        error_exit("must provide a file");
     }
     int fd = open(argv[1], O_RDONLY);
     if (fd < 0)
     {
-        printf("Couldn't open file, errno %d\n", errno);
-        exit(-1);
+        error_exit("Couldn't open file");
     }
     Elf32_Ehdr *elf_header = (Elf32_Ehdr *)malloc(sizeof(Elf32_Ehdr));
     int rd = read(fd, (void *)elf_header, sizeof(Elf32_Ehdr));
     if (rd < 0)
     {
-        printf("Couldn't read file, errno %d\n", errno);
-        exit(-1);
+        error_exit("Couldn't read file");
     }
     if (!elf_check_file(elf_header))
     {
-        printf("Not an ELF file\n");
-        exit(-1);
+        error_exit("Not an ELF file");
     }
     parse_elf32_header(elf_header);
     printf("\n\n");
     parse_elf32_phdr(fd, elf_header);
     printf("\n\n");
     parse_elf32_shdr(fd, elf_header);
+    free(elf_header);
 }
